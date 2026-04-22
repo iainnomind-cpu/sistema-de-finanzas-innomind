@@ -37,31 +37,33 @@ export default function Modal({ open, onClose, title, subtitle, children, maxWid
   return (
     <div
       ref={overlayRef}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 overflow-y-auto"
       onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
     >
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-fade-in" />
+      <div className="flex min-h-full items-center justify-center p-4 sm:p-6" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+        {/* Backdrop */}
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm animate-fade-in pointer-events-none" />
 
-      {/* Modal */}
-      <div className={`relative w-full ${maxWidth} bg-white rounded-2xl shadow-2xl animate-fade-in overflow-hidden`}>
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <div>
-            <h2 className="text-lg font-semibold text-brand-900">{title}</h2>
-            {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
+        {/* Modal */}
+        <div className={`relative w-full ${maxWidth} bg-white rounded-2xl shadow-2xl animate-fade-in overflow-hidden flex flex-col max-h-[90vh]`}>
+          {/* Header */}
+          <div className="flex-none flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-white">
+            <div>
+              <h2 className="text-lg font-semibold text-brand-900">{title}</h2>
+              {subtitle && <p className="text-xs text-gray-500 mt-0.5">{subtitle}</p>}
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            >
+              <X size={18} />
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-          >
-            <X size={18} />
-          </button>
-        </div>
 
-        {/* Body */}
-        <div className="px-6 py-5 max-h-[70vh] overflow-y-auto">
-          {children}
+          {/* Body */}
+          <div className="flex-1 px-6 py-5 overflow-y-auto">
+            {children}
+          </div>
         </div>
       </div>
     </div>

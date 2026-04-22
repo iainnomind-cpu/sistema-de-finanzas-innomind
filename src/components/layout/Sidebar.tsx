@@ -18,6 +18,8 @@ import {
   UserCog,
   ChevronLeft,
   ChevronRight,
+  PieChart,
+  Landmark,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -35,6 +37,8 @@ const menuGroups = [
     label: 'Finanzas',
     items: [
       { href: '/ingresos', icon: DollarSign, label: 'Ingresos' },
+      { href: '/distribucion', icon: PieChart, label: 'Distribución' },
+      { href: '/iva', icon: Landmark, label: 'Gestión de IVA' },
       { href: '/gastos', icon: Receipt, label: 'Gastos' },
       { href: '/cxc', icon: FileText, label: 'Cuentas por Cobrar' },
       { href: '/flujo-caja', icon: Wallet, label: 'Flujo de Caja' },

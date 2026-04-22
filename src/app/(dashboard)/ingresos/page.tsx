@@ -88,8 +88,8 @@ export default function IngresosPage() {
         </div>
         <div className="glass-card rounded-2xl p-5 kpi-card">
           <div className="w-9 h-9 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center mb-3"><ArrowUpRight size={18} /></div>
-          <p className="text-2xl font-bold text-brand-900">{incomes.filter(i => i.status === 'en_cuenta').length}</p>
-          <p className="text-xs text-gray-500 mt-1">Cobrados (en cuenta)</p>
+          <p className="text-2xl font-bold text-brand-900">{incomes.filter(i => i.status === 'cobrado').length}</p>
+          <p className="text-xs text-gray-500 mt-1">Cobrados (Distribuidos)</p>
         </div>
         <div className="glass-card rounded-2xl p-5">
           <p className="text-xs font-semibold text-gray-500 mb-2">Composición</p>
@@ -141,8 +141,11 @@ export default function IngresosPage() {
                     <td className="px-6 py-3 text-sm font-medium text-brand-900">{inc.concept}</td>
                     <td className="px-6 py-3 text-sm text-gray-500 hidden md:table-cell">{(inc as any).client?.name || '—'}</td>
                     <td className="px-6 py-3 hidden lg:table-cell"><span className="text-xs px-2 py-0.5 rounded-lg bg-brand-50 text-brand-700">{getStatusLabel(inc.category)}</span></td>
-                    <td className="px-6 py-3 text-right text-sm font-semibold text-emerald-600">{formatMXN(inc.amount)}</td>
-                    <td className="px-6 py-3"><span className={`text-xs px-2 py-0.5 rounded-lg font-medium ${inc.status === 'en_cuenta' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{getStatusLabel(inc.status)}</span></td>
+                    <td className="px-6 py-3 text-right">
+                      <p className="text-sm font-semibold text-emerald-600">{formatMXN(inc.amount)}</p>
+                      {inc.has_invoice && <p className="text-[10px] text-gray-400 mt-0.5" title="Monto cobrado con IVA">Total: {formatMXN(inc.total_amount_with_iva || 0)}</p>}
+                    </td>
+                    <td className="px-6 py-3"><span className={`text-xs px-2 py-0.5 rounded-lg font-medium ${inc.status === 'cobrado' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{inc.status === 'cobrado' ? 'Cobrado (Distribuido)' : 'Pendiente'}</span></td>
                     <td className="px-6 py-3">
                       <div className="flex justify-end gap-1">
                         <button onClick={() => { setEditIncome(inc); setShowForm(true); }} className="p-1.5 rounded-lg text-gray-400 hover:text-brand-600 hover:bg-brand-50"><Pencil size={14} /></button>

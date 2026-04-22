@@ -17,6 +17,9 @@ export default function PylPage() {
     grossProfit: 0,
     payroll: 0,
     operatingProfit: 0,
+    ivaCollectedPeriod: 0,
+    ivaPaidPeriod: 0,
+    ivaBalance: 0,
   });
   const [balanceData, setBalanceData] = useState({
     cash: 0,
@@ -70,7 +73,17 @@ export default function PylPage() {
     const grossProfit = totalIncome - (totalExpenses - payroll);
     const operatingProfit = totalIncome - totalExpenses;
 
-    setPlData({ incomeByCategory, expenseByType, totalIncome, totalExpenses, grossProfit, payroll, operatingProfit });
+    // IVA position
+    const { data: ivaMovs } = await supabase.from('iva_movements').select('type, amount, created_at').gte('created_at', startDate).lte('created_at', endDate + 'T23:59:59');
+    let ivaCollectedPeriod = 0;
+    let ivaPaidPeriod = 0;
+    (ivaMovs || []).forEach(m => {
+      if (m.type === 'collected') ivaCollectedPeriod += m.amount;
+      if (m.type === 'paid_to_sat') ivaPaidPeriod += m.amount;
+    });
+    const { data: ivaBal } = await supabase.from('iva_balance').select('balance').single();
+
+    setPlData({ incomeByCategory, expenseByType, totalIncome, totalExpenses, grossProfit, payroll, operatingProfit, ivaCollectedPeriod, ivaPaidPeriod, ivaBalance: ivaBal?.balance || 0 });
 
     // Balance general (all-time)
     const { data: allInc } = await supabase.from('income').select('amount').eq('status', 'en_cuenta');
@@ -167,6 +180,16 @@ export default function PylPage() {
                 <div className="flex justify-between text-base font-bold">
                   <span className={plData.operatingProfit >= 0 ? 'text-brand-900' : 'text-red-700'}>Utilidad Neta</span>
                   <span className={plData.operatingProfit >= 0 ? 'text-brand-900' : 'text-red-700'}>{formatMXN(plData.operatingProfit)}</span>
+                </div>
+              </div>
+
+              {/* Posición fiscal de IVA */}
+              <div className="bg-amber-50/50 rounded-xl p-4 mt-4 border border-amber-100">
+                <p className="text-xs font-bold text-amber-800 uppercase tracking-wider mb-2">Posición fiscal de IVA (Informativo)</p>
+                <div className="flex justify-between py-1 text-sm"><span className="text-gray-600">IVA cobrado (periodo)</span><span className="font-medium text-emerald-600">+{formatMXN(plData.ivaCollectedPeriod)}</span></div>
+                <div className="flex justify-between py-1 text-sm"><span className="text-gray-600">IVA pagado (periodo)</span><span className="font-medium text-amber-600">-{formatMXN(plData.ivaPaidPeriod)}</span></div>
+                <div className="flex justify-between py-2 mt-2 border-t border-amber-200 text-sm font-bold">
+                  <span className="text-amber-900">Saldo IVA Pendiente (Total)</span><span className="text-amber-700">{formatMXN(plData.ivaBalance)}</span>
                 </div>
               </div>
             </div>

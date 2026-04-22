@@ -95,7 +95,7 @@ CREATE TABLE IF NOT EXISTS income (
   client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
   project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
   payment_method TEXT DEFAULT 'transferencia' CHECK (payment_method IN ('transferencia', 'deposito', 'efectivo')),
-  status TEXT DEFAULT 'en_cuenta' CHECK (status IN ('confirmado', 'en_cuenta')),
+  status TEXT DEFAULT 'cobrado' CHECK (status IN ('pendiente', 'cobrado')),
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -339,3 +339,310 @@ CREATE TRIGGER update_projects_updated_at BEFORE UPDATE ON projects FOR EACH ROW
 CREATE TRIGGER update_receivables_updated_at BEFORE UPDATE ON receivables FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER update_goals_updated_at BEFORE UPDATE ON goals FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER update_projections_updated_at BEFORE UPDATE ON projections_config FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ============================================
+-- Profit First / Distribution Module
+-- ============================================
+
+-- Table: distribution_config
+CREATE TABLE IF NOT EXISTS distribution_config (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  bucket_salary NUMERIC(5,2) NOT NULL DEFAULT 35.00,
+  bucket_reserve NUMERIC(5,2) NOT NULL DEFAULT 20.00,
+  bucket_profit  NUMERIC(5,2) NOT NULL DEFAULT 15.00,
+  bucket_opex    NUMERIC(5,2) NOT NULL DEFAULT 20.00,
+  bucket_tax     NUMERIC(5,2) NOT NULL DEFAULT 10.00,
+  reserve_goal   NUMERIC(12,2) NOT NULL DEFAULT 75000.00,
+  profit_payout_month INTEGER NOT NULL DEFAULT 12,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT buckets_sum_100 CHECK (
+    bucket_salary + bucket_reserve + bucket_profit + bucket_opex + bucket_tax = 100
+  )
+);
+
+-- Table: distribution_events
+CREATE TABLE IF NOT EXISTS distribution_events (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  income_id UUID REFERENCES income(id) ON DELETE CASCADE NOT NULL,
+  total_amount NUMERIC(12,2) NOT NULL,
+  amount_salary NUMERIC(12,2) NOT NULL,
+  amount_reserve NUMERIC(12,2) NOT NULL,
+  amount_profit  NUMERIC(12,2) NOT NULL,
+  amount_opex    NUMERIC(12,2) NOT NULL,
+  amount_tax     NUMERIC(12,2) NOT NULL,
+  config_snapshot JSONB NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Table: bucket_balances
+CREATE TABLE IF NOT EXISTS bucket_balances (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  bucket_name TEXT NOT NULL,
+  balance NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+  total_in NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+  total_out NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, bucket_name)
+);
+
+-- Table: bucket_withdrawals
+CREATE TABLE IF NOT EXISTS bucket_withdrawals (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  bucket_name TEXT NOT NULL,
+  amount NUMERIC(12,2) NOT NULL,
+  concept TEXT NOT NULL,
+  reference_id UUID,
+  reference_type TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- RLS
+ALTER TABLE distribution_config ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view own distribution_config" ON distribution_config FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own distribution_config" ON distribution_config FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own distribution_config" ON distribution_config FOR UPDATE USING (auth.uid() = user_id);
+
+ALTER TABLE distribution_events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view own distribution_events" ON distribution_events FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own distribution_events" ON distribution_events FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+ALTER TABLE bucket_balances ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view own bucket_balances" ON bucket_balances FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can update own bucket_balances" ON bucket_balances FOR UPDATE USING (auth.uid() = user_id);
+-- Insert via triggers/functions
+
+ALTER TABLE bucket_withdrawals ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view own bucket_withdrawals" ON bucket_withdrawals FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own bucket_withdrawals" ON bucket_withdrawals FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE TRIGGER update_dist_config_updated_at BEFORE UPDATE ON distribution_config FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- Trigger to init default distribution config and buckets on new user
+CREATE OR REPLACE FUNCTION handle_new_user_distribution()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO distribution_config (user_id) VALUES (NEW.id);
+  INSERT INTO bucket_balances (user_id, bucket_name, balance) VALUES
+    (NEW.id, 'salary', 0),
+    (NEW.id, 'reserve', 0),
+    (NEW.id, 'profit', 0),
+    (NEW.id, 'opex', 0),
+    (NEW.id, 'tax', 0);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Note: We assume auth.users trigger exists or we attach it here
+DROP TRIGGER IF EXISTS on_auth_user_created_dist ON auth.users;
+CREATE TRIGGER on_auth_user_created_dist
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION handle_new_user_distribution();
+
+-- RPC for Income Distribution
+CREATE OR REPLACE FUNCTION distribute_income(p_income_id UUID, p_amount NUMERIC, p_user_id UUID)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_config RECORD;
+  v_salary NUMERIC;
+  v_reserve NUMERIC;
+  v_profit NUMERIC;
+  v_opex NUMERIC;
+  v_tax NUMERIC;
+  v_distributed NUMERIC;
+  v_diff NUMERIC;
+BEGIN
+  -- Get active config
+  SELECT * INTO v_config
+  FROM distribution_config
+  WHERE user_id = p_user_id AND is_active = true
+  ORDER BY created_at DESC LIMIT 1;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'No active distribution config found for user';
+  END IF;
+
+  -- Calculate amounts
+  v_salary := ROUND((p_amount * v_config.bucket_salary / 100.0), 2);
+  v_reserve := ROUND((p_amount * v_config.bucket_reserve / 100.0), 2);
+  v_profit := ROUND((p_amount * v_config.bucket_profit / 100.0), 2);
+  v_opex := ROUND((p_amount * v_config.bucket_opex / 100.0), 2);
+  v_tax := ROUND((p_amount * v_config.bucket_tax / 100.0), 2);
+
+  v_distributed := v_salary + v_reserve + v_profit + v_opex + v_tax;
+  v_diff := p_amount - v_distributed;
+  
+  -- Adjust rounding to salary
+  v_salary := v_salary + v_diff;
+
+  -- Insert event
+  INSERT INTO distribution_events (
+    user_id, income_id, total_amount, amount_salary, amount_reserve, 
+    amount_profit, amount_opex, amount_tax, config_snapshot
+  ) VALUES (
+    p_user_id, p_income_id, p_amount, v_salary, v_reserve, 
+    v_profit, v_opex, v_tax, row_to_json(v_config)::jsonb
+  );
+
+  -- Update balances
+  UPDATE bucket_balances SET balance = balance + v_salary, total_in = total_in + v_salary, updated_at = NOW() WHERE user_id = p_user_id AND bucket_name = 'salary';
+  UPDATE bucket_balances SET balance = balance + v_reserve, total_in = total_in + v_reserve, updated_at = NOW() WHERE user_id = p_user_id AND bucket_name = 'reserve';
+  UPDATE bucket_balances SET balance = balance + v_profit, total_in = total_in + v_profit, updated_at = NOW() WHERE user_id = p_user_id AND bucket_name = 'profit';
+  UPDATE bucket_balances SET balance = balance + v_opex, total_in = total_in + v_opex, updated_at = NOW() WHERE user_id = p_user_id AND bucket_name = 'opex';
+  UPDATE bucket_balances SET balance = balance + v_tax, total_in = total_in + v_tax, updated_at = NOW() WHERE user_id = p_user_id AND bucket_name = 'tax';
+
+END;
+$$;
+
+-- ============================================
+-- Módulo de Gestión de IVA
+-- ============================================
+
+ALTER TABLE income
+  ADD COLUMN IF NOT EXISTS has_invoice BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS iva_rate NUMERIC(5,4) NOT NULL DEFAULT 0.16,
+  ADD COLUMN IF NOT EXISTS iva_amount NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+  ADD COLUMN IF NOT EXISTS base_amount NUMERIC(12,2),
+  ADD COLUMN IF NOT EXISTS total_amount_with_iva NUMERIC(12,2);
+
+-- Migración de datos existentes
+UPDATE income
+SET
+  has_invoice = false,
+  iva_rate = 0,
+  iva_amount = 0,
+  base_amount = amount,
+  total_amount_with_iva = amount
+WHERE base_amount IS NULL;
+
+CREATE TABLE IF NOT EXISTS iva_movements (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  type TEXT NOT NULL CHECK (type IN ('collected', 'paid_to_sat', 'adjustment')),
+  amount NUMERIC(12,2) NOT NULL,
+  income_id UUID REFERENCES income(id) ON DELETE SET NULL,
+  concept TEXT NOT NULL,
+  period_month INTEGER,
+  period_year INTEGER,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS iva_balance (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL UNIQUE,
+  balance NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+  total_collected NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+  total_paid NUMERIC(12,2) NOT NULL DEFAULT 0.00,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS iva_config (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL UNIQUE,
+  default_iva_rate NUMERIC(5,4) NOT NULL DEFAULT 0.16,
+  declaration_day INTEGER NOT NULL DEFAULT 17,
+  alert_days_before INTEGER NOT NULL DEFAULT 5,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- RLS
+ALTER TABLE iva_movements ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view own iva_movements" ON iva_movements FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own iva_movements" ON iva_movements FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+ALTER TABLE iva_balance ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view own iva_balance" ON iva_balance FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can update own iva_balance" ON iva_balance FOR UPDATE USING (auth.uid() = user_id);
+
+ALTER TABLE iva_config ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can view own iva_config" ON iva_config FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own iva_config" ON iva_config FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can update own iva_config" ON iva_config FOR UPDATE USING (auth.uid() = user_id);
+
+-- Actualizar trigger existente de usuario nuevo para que también cree configuración y balance de IVA
+CREATE OR REPLACE FUNCTION handle_new_user_distribution()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Profit First
+  INSERT INTO distribution_config (user_id) VALUES (NEW.id);
+  INSERT INTO bucket_balances (user_id, bucket_name, balance) VALUES
+    (NEW.id, 'salary', 0),
+    (NEW.id, 'reserve', 0),
+    (NEW.id, 'profit', 0),
+    (NEW.id, 'opex', 0),
+    (NEW.id, 'tax', 0);
+    
+  -- IVA
+  INSERT INTO iva_config (user_id) VALUES (NEW.id);
+  INSERT INTO iva_balance (user_id, balance, total_collected, total_paid) VALUES (NEW.id, 0, 0, 0);
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- RPCs para transacciones atómicas
+CREATE OR REPLACE FUNCTION separate_iva(p_income_id UUID, p_iva_amount NUMERIC, p_base_amount NUMERIC, p_user_id UUID)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_now_month INTEGER;
+  v_now_year INTEGER;
+BEGIN
+  v_now_month := EXTRACT(MONTH FROM NOW());
+  v_now_year := EXTRACT(YEAR FROM NOW());
+
+  -- Insertar movimiento
+  INSERT INTO iva_movements (
+    user_id, type, amount, income_id, concept, period_month, period_year
+  ) VALUES (
+    p_user_id, 'collected', p_iva_amount, p_income_id, 
+    'IVA separado — ingreso de $' || TO_CHAR(p_base_amount, 'FM99,999,999.00'),
+    v_now_month, v_now_year
+  );
+
+  -- Actualizar balance
+  UPDATE iva_balance 
+  SET balance = balance + p_iva_amount, 
+      total_collected = total_collected + p_iva_amount,
+      updated_at = NOW()
+  WHERE user_id = p_user_id;
+
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION pay_iva_sat(p_amount NUMERIC, p_period_month INTEGER, p_period_year INTEGER, p_notes TEXT, p_user_id UUID)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  -- Insertar movimiento
+  INSERT INTO iva_movements (
+    user_id, type, amount, concept, period_month, period_year, notes
+  ) VALUES (
+    p_user_id, 'paid_to_sat', p_amount, 
+    'Declaración IVA ' || p_period_month || '/' || p_period_year,
+    p_period_month, p_period_year, p_notes
+  );
+
+  -- Actualizar balance
+  UPDATE iva_balance 
+  SET balance = balance - p_amount, 
+      total_paid = total_paid + p_amount,
+      updated_at = NOW()
+  WHERE user_id = p_user_id;
+
+END;
+$$;
