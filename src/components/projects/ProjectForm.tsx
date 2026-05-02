@@ -26,6 +26,7 @@ export default function ProjectForm({ open, onClose, onSaved, editProject }: Pro
     client_id: '',
     type: 'desarrollo_custom',
     total_amount: '',
+    advance_amount: '',
     start_date: new Date().toISOString().split('T')[0],
     estimated_months: '1',
     status: 'propuesta',
@@ -50,6 +51,7 @@ export default function ProjectForm({ open, onClose, onSaved, editProject }: Pro
         client_id: editProject.client_id || '',
         type: editProject.type,
         total_amount: editProject.total_amount.toString(),
+        advance_amount: editProject.advance_amount ? editProject.advance_amount.toString() : (editProject.total_amount * 0.5).toString(),
         start_date: editProject.start_date || new Date().toISOString().split('T')[0],
         estimated_months: editProject.estimated_months.toString(),
         status: editProject.status,
@@ -62,6 +64,7 @@ export default function ProjectForm({ open, onClose, onSaved, editProject }: Pro
         client_id: '',
         type: 'desarrollo_custom',
         total_amount: '',
+        advance_amount: '',
         start_date: new Date().toISOString().split('T')[0],
         estimated_months: '1',
         status: 'propuesta',
@@ -72,7 +75,13 @@ export default function ProjectForm({ open, onClose, onSaved, editProject }: Pro
   }, [editProject, open]);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {
-    setForm({ ...form, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    if (name === 'total_amount') {
+      const val = parseFloat(value) || 0;
+      setForm(prev => ({ ...prev, total_amount: value, advance_amount: (val * 0.5).toString() }));
+    } else {
+      setForm(prev => ({ ...prev, [name]: value }));
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -81,8 +90,8 @@ export default function ProjectForm({ open, onClose, onSaved, editProject }: Pro
     if (!form.client_id) { toast('Selecciona un cliente', 'error'); return; }
 
     const totalAmount = parseFloat(form.total_amount) || 0;
-    const advanceAmount = totalAmount * 0.5;
-    const balanceAmount = totalAmount * 0.5;
+    const advanceAmount = parseFloat(form.advance_amount) || 0;
+    const balanceAmount = totalAmount - advanceAmount;
 
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
@@ -178,7 +187,7 @@ export default function ProjectForm({ open, onClose, onSaved, editProject }: Pro
       open={open}
       onClose={onClose}
       title={editProject ? 'Editar Proyecto' : 'Nuevo Proyecto'}
-      subtitle="El sistema genera automáticamente las CxC (50% anticipo + 50% saldo)"
+      subtitle="El sistema genera automáticamente las CxC (Anticipo + Saldo)"
       maxWidth="max-w-2xl"
     >
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -200,7 +209,7 @@ export default function ProjectForm({ open, onClose, onSaved, editProject }: Pro
         </div>
 
         {/* Row 2 */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
           <div>
             <label className={labelClass}>Tipo de Proyecto</label>
             <select name="type" value={form.type} onChange={handleChange} className={inputClass}>
@@ -212,7 +221,11 @@ export default function ProjectForm({ open, onClose, onSaved, editProject }: Pro
           </div>
           <div>
             <label className={labelClass}>Monto Total Pactado *</label>
-            <input name="total_amount" type="number" step="0.01" min="0" value={form.total_amount} onChange={handleChange} placeholder="$0.00" className={inputClass} />
+            <input name="total_amount" type="number" step="0.01" min="0" value={form.total_amount} onChange={handleChange} placeholder="$0.00" className={inputClass} required />
+          </div>
+          <div>
+            <label className={labelClass}>Anticipo *</label>
+            <input name="advance_amount" type="number" step="0.01" min="0" value={form.advance_amount} onChange={handleChange} placeholder="$0.00" className={inputClass} required />
           </div>
           <div>
             <label className={labelClass}>Duración (meses)</label>
@@ -252,12 +265,12 @@ export default function ProjectForm({ open, onClose, onSaved, editProject }: Pro
             <p className="text-xs font-semibold text-brand-700 mb-2">Desglose de Cobros (auto)</p>
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <p className="text-gray-500 text-xs">Anticipo (50%)</p>
-                <p className="font-semibold text-brand-900">${(totalAmount * 0.5).toLocaleString('es-MX')}</p>
+                <p className="text-gray-500 text-xs">Anticipo</p>
+                <p className="font-semibold text-brand-900">${(parseFloat(form.advance_amount) || 0).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
               </div>
               <div>
-                <p className="text-gray-500 text-xs">Saldo (50%)</p>
-                <p className="font-semibold text-brand-900">${(totalAmount * 0.5).toLocaleString('es-MX')}</p>
+                <p className="text-gray-500 text-xs">Saldo</p>
+                <p className="font-semibold text-brand-900">${(totalAmount - (parseFloat(form.advance_amount) || 0)).toLocaleString('es-MX', { minimumFractionDigits: 2 })}</p>
               </div>
             </div>
           </div>
