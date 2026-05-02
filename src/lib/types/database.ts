@@ -28,6 +28,19 @@ export type Client = {
   classification: 'recurrente' | 'unico' | 'activo' | 'inactivo';
   created_at: string;
   updated_at: string;
+  // Joined
+  documents?: ClientDocument[];
+};
+
+export type ClientDocument = {
+  id: string;
+  user_id: string;
+  client_id: string;
+  name: string;
+  file_url: string;
+  file_type: string | null;
+  file_size: number | null;
+  created_at: string;
 };
 
 export type ProjectStatus = 'propuesta' | 'activo' | 'en_entrega' | 'completado' | 'cancelado';

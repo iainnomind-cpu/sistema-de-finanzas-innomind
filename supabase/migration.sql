@@ -646,3 +646,39 @@ BEGIN
 
 END;
 $$;
+
+ 
+ - -   = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = 
+ - -   T a b l e :   c l i e n t _ d o c u m e n t s   ( D o c u m e n t o s   d e   C l i e n t e ) 
+ - -   = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = 
+ C R E A T E   T A B L E   I F   N O T   E X I S T S   c l i e n t _ d o c u m e n t s   ( 
+     i d   U U I D   P R I M A R Y   K E Y   D E F A U L T   u u i d _ g e n e r a t e _ v 4 ( ) , 
+     u s e r _ i d   U U I D   R E F E R E N C E S   a u t h . u s e r s ( i d )   O N   D E L E T E   C A S C A D E   N O T   N U L L , 
+     c l i e n t _ i d   U U I D   R E F E R E N C E S   c l i e n t s ( i d )   O N   D E L E T E   C A S C A D E   N O T   N U L L , 
+     n a m e   T E X T   N O T   N U L L , 
+     f i l e _ u r l   T E X T   N O T   N U L L , 
+     f i l e _ t y p e   T E X T , 
+     f i l e _ s i z e   I N T E G E R , 
+     c r e a t e d _ a t   T I M E S T A M P T Z   D E F A U L T   N O W ( ) 
+ ) ; 
+ 
+ A L T E R   T A B L E   c l i e n t _ d o c u m e n t s   E N A B L E   R O W   L E V E L   S E C U R I T Y ; 
+ C R E A T E   P O L I C Y   \  
+ U s e r s  
+ c a n  
+ v i e w  
+ o w n  
+ c l i e n t _ d o c u m e n t s \   O N   c l i e n t _ d o c u m e n t s   F O R   S E L E C T   U S I N G   ( a u t h . u i d ( )   =   u s e r _ i d ) ; 
+ C R E A T E   P O L I C Y   \ U s e r s  
+ c a n  
+ i n s e r t  
+ o w n  
+ c l i e n t _ d o c u m e n t s \   O N   c l i e n t _ d o c u m e n t s   F O R   I N S E R T   W I T H   C H E C K   ( a u t h . u i d ( )   =   u s e r _ i d ) ; 
+ C R E A T E   P O L I C Y   \ U s e r s  
+ c a n  
+ d e l e t e  
+ o w n  
+ c l i e n t _ d o c u m e n t s \   O N   c l i e n t _ d o c u m e n t s   F O R   D E L E T E   U S I N G   ( a u t h . u i d ( )   =   u s e r _ i d ) ; 
+ 
+  
+ 

@@ -10,6 +10,7 @@ import {
   Users, Plus, Search, Trash2, Pencil, Eye,
   Building2, User as UserIcon, CircleDot
 } from 'lucide-react';
+import Link from 'next/link';
 
 export default function ClientesPage() {
   const supabase = createClient();
@@ -168,7 +169,9 @@ export default function ClientesPage() {
                           {client.type === 'empresa' ? <Building2 size={16} /> : <UserIcon size={16} />}
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-brand-900">{client.name}</p>
+                          <Link href={`/clientes/${client.id}`} className="text-sm font-semibold text-brand-900 hover:text-brand-600 transition-colors">
+                            {client.name}
+                          </Link>
                           {client.email && <p className="text-xs text-gray-400">{client.email}</p>}
                         </div>
                       </div>
@@ -193,6 +196,13 @@ export default function ClientesPage() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center justify-end gap-1">
+                        <Link
+                          href={`/clientes/${client.id}`}
+                          className="p-2 rounded-lg text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
+                          title="Ver Perfil"
+                        >
+                          <Eye size={15} />
+                        </Link>
                         <button
                           onClick={() => openEdit(client)}
                           className="p-2 rounded-lg text-gray-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
