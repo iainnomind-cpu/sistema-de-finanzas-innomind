@@ -94,8 +94,7 @@ export default function ProyectosPage() {
     const baseAmount = paymentHasInvoice ? Math.round((amount / (1 + ivaRate)) * 100) / 100 : amount;
     const ivaAmount = paymentHasInvoice ? Math.round((amount - baseAmount) * 100) / 100 : 0;
 
-    // Create income entry
-    const { data: newIncome, error: insertError } = await supabase.from('income').insert({
+    const payload = {
       user_id: user.id,
       date: new Date().toISOString().split('T')[0],
       amount: baseAmount,
@@ -110,9 +109,15 @@ export default function ProyectosPage() {
       project_id: project.id,
       payment_method: 'transferencia',
       status: 'cobrado',
-    }).select().single();
+    };
+
+    console.log('PAYLOAD:', payload);
+
+    // Create income entry
+    const { data: newIncome, error: insertError } = await supabase.from('income').insert(payload).select().single();
 
     if (insertError) {
+      console.error('INSERT ERROR:', insertError);
       toast(`Error guardando ingreso: ${insertError.message}`, 'error');
       setPaymentLoading(false);
       return;
