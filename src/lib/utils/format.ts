@@ -14,7 +14,8 @@ export function formatMXN(amount: number): string {
  * Format a date string to Spanish locale
  */
 export function formatDate(dateStr: string): string {
-  const date = new Date(dateStr + 'T00:00:00');
+  if (!dateStr) return '';
+  const date = dateStr.includes('T') ? new Date(dateStr) : new Date(dateStr + 'T00:00:00');
   return date.toLocaleDateString('es-MX', {
     day: 'numeric',
     month: 'short',

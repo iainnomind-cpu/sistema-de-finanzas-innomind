@@ -163,7 +163,7 @@ export default function IvaPage() {
                         <tr key={m.id} className="hover:bg-gray-50/50 transition-colors">
                           <td className="px-6 py-3 text-gray-600 whitespace-nowrap">{formatDate(m.created_at)}</td>
                           <td className="px-6 py-3 font-medium text-brand-900">
-                            {m.concept}
+                            {m.type === 'collected' && (m as any).income ? `IVA de ${(m as any).income.concept}` : m.concept}
                             {m.notes && <p className="text-xs text-gray-400 font-normal mt-0.5">{m.notes}</p>}
                           </td>
                           <td className="px-6 py-3">
