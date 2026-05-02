@@ -39,6 +39,11 @@ export default function ProyectosPage() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('todos');
 
+  // Payment Confirmation Modal State
+  const [paymentModal, setPaymentModal] = useState<{ open: boolean; project: Project | null; type: 'advance' | 'balance' }>({ open: false, project: null, type: 'advance' });
+  const [paymentHasInvoice, setPaymentHasInvoice] = useState(false);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+
   const fetchProjects = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
@@ -71,7 +76,10 @@ export default function ProyectosPage() {
     setDeleteId(null);
   }
 
-  async function handleMarkPaid(project: Project, type: 'advance' | 'balance') {
+  async function confirmPayment() {
+    if (!paymentModal.project) return;
+    setPaymentLoading(true);
+    const { project, type } = paymentModal;
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
@@ -81,18 +89,47 @@ export default function ProyectosPage() {
     // Update project
     await supabase.from('projects').update(updateField).eq('id', project.id);
 
+    // Calculate IVA
+    const ivaRate = paymentHasInvoice ? 0.16 : 0;
+    const baseAmount = paymentHasInvoice ? Math.round((amount / (1 + ivaRate)) * 100) / 100 : amount;
+    const ivaAmount = paymentHasInvoice ? Math.round((amount - baseAmount) * 100) / 100 : 0;
+
     // Create income entry
-    await supabase.from('income').insert({
+    const { data: newIncome } = await supabase.from('income').insert({
       user_id: user.id,
       date: new Date().toISOString().split('T')[0],
-      amount,
+      amount: baseAmount,
+      base_amount: baseAmount,
+      total_amount_with_iva: amount,
+      iva_amount: ivaAmount,
+      iva_rate: ivaRate,
+      has_invoice: paymentHasInvoice,
       concept: `${type === 'advance' ? 'Anticipo' : 'Saldo'} - ${project.name}`,
       category: type === 'advance' ? 'anticipo_proyecto' : 'saldo_proyecto',
       client_id: project.client_id,
       project_id: project.id,
       payment_method: 'transferencia',
-      status: 'en_cuenta',
-    });
+      status: 'cobrado',
+    }).select().single();
+
+    if (newIncome) {
+      // 1. Separate IVA if there is invoice
+      if (newIncome.has_invoice && newIncome.iva_amount > 0) {
+        await supabase.rpc('separate_iva', {
+          p_income_id: newIncome.id,
+          p_iva_amount: newIncome.iva_amount,
+          p_base_amount: newIncome.base_amount,
+          p_user_id: user.id
+        });
+      }
+
+      // 2. Distribute base amount
+      await supabase.rpc('distribute_income', {
+        p_income_id: newIncome.id,
+        p_amount: newIncome.base_amount,
+        p_user_id: user.id
+      });
+    }
 
     // Close matching CxC
     const { data: cxcList } = await supabase
@@ -107,7 +144,9 @@ export default function ProyectosPage() {
       await supabase.from('receivables').update({ status: 'cobrada' }).eq('id', cxcList[0].id);
     }
 
-    toast(`${type === 'advance' ? 'Anticipo' : 'Saldo'} marcado como cobrado. Ingreso y CxC actualizados.`, 'success');
+    setPaymentLoading(false);
+    setPaymentModal({ open: false, project: null, type: 'advance' });
+    toast(`${type === 'advance' ? 'Anticipo' : 'Saldo'} cobrado y distribuido.`, 'success');
     fetchProjects();
   }
 
@@ -189,7 +228,7 @@ export default function ProyectosPage() {
                     {/* Payment status indicators */}
                     <div className="flex gap-1 mt-2">
                       <button
-                        onClick={(e) => { e.stopPropagation(); if (!p.advance_paid) handleMarkPaid(p, 'advance'); }}
+                        onClick={(e) => { e.stopPropagation(); if (!p.advance_paid) { setPaymentModal({ open: true, project: p, type: 'advance' }); setPaymentHasInvoice(p.has_invoice || false); } }}
                         className={`flex-1 text-[10px] py-1 rounded-lg text-center font-medium transition-all
                           ${p.advance_paid
                             ? 'bg-emerald-100 text-emerald-700'
@@ -199,7 +238,7 @@ export default function ProyectosPage() {
                         {p.advance_paid ? '✓ Anticipo' : '○ Anticipo'}
                       </button>
                       <button
-                        onClick={(e) => { e.stopPropagation(); if (!p.balance_paid) handleMarkPaid(p, 'balance'); }}
+                        onClick={(e) => { e.stopPropagation(); if (!p.balance_paid) { setPaymentModal({ open: true, project: p, type: 'balance' }); setPaymentHasInvoice(p.has_invoice || false); } }}
                         className={`flex-1 text-[10px] py-1 rounded-lg text-center font-medium transition-all
                           ${p.balance_paid
                             ? 'bg-emerald-100 text-emerald-700'
@@ -263,12 +302,18 @@ export default function ProyectosPage() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex gap-1">
-                        <span className={`text-[10px] px-2 py-0.5 rounded ${p.advance_paid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-50 text-amber-600'}`}>
+                        <button
+                          onClick={() => { if (!p.advance_paid) { setPaymentModal({ open: true, project: p, type: 'advance' }); setPaymentHasInvoice(p.has_invoice || false); } }}
+                          disabled={p.advance_paid}
+                          className={`text-[10px] px-2 py-0.5 rounded transition-colors ${p.advance_paid ? 'bg-emerald-100 text-emerald-700 cursor-default' : 'bg-amber-50 text-amber-600 hover:bg-amber-100 cursor-pointer'}`}>
                           {p.advance_paid ? '✓ Ant' : '○ Ant'}
-                        </span>
-                        <span className={`text-[10px] px-2 py-0.5 rounded ${p.balance_paid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-50 text-amber-600'}`}>
+                        </button>
+                        <button
+                          onClick={() => { if (!p.balance_paid) { setPaymentModal({ open: true, project: p, type: 'balance' }); setPaymentHasInvoice(p.has_invoice || false); } }}
+                          disabled={p.balance_paid}
+                          className={`text-[10px] px-2 py-0.5 rounded transition-colors ${p.balance_paid ? 'bg-emerald-100 text-emerald-700 cursor-default' : 'bg-amber-50 text-amber-600 hover:bg-amber-100 cursor-pointer'}`}>
                           {p.balance_paid ? '✓ Sal' : '○ Sal'}
-                        </span>
+                        </button>
                       </div>
                     </td>
                     <td className="px-6 py-4">
@@ -298,6 +343,81 @@ export default function ProyectosPage() {
             <div className="flex justify-end gap-3">
               <button onClick={() => setDeleteId(null)} className="px-4 py-2 rounded-xl text-sm text-gray-600 hover:bg-gray-100">Cancelar</button>
               <button onClick={() => handleDelete(deleteId)} className="px-4 py-2 rounded-xl text-sm font-semibold text-white bg-red-600 hover:bg-red-500 shadow-sm">Eliminar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Confirmation Modal */}
+      {paymentModal.open && paymentModal.project && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => !paymentLoading && setPaymentModal({ open: false, project: null, type: 'advance' })} />
+          <div className="relative bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full animate-fade-in">
+            <h3 className="text-lg font-bold text-brand-900 mb-1">Confirmar Cobro</h3>
+            <p className="text-sm text-gray-500 mb-6">Estás a punto de registrar un cobro para este proyecto. El ingreso se distribuirá automáticamente.</p>
+            
+            <div className="bg-gray-50 rounded-xl p-4 mb-6 border border-gray-100">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-sm text-gray-600">Proyecto:</span>
+                <span className="text-sm font-semibold text-gray-900">{paymentModal.project.name}</span>
+              </div>
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-sm text-gray-600">Concepto:</span>
+                <span className="text-sm font-semibold text-brand-700">
+                  {paymentModal.type === 'advance' ? 'Anticipo' : 'Saldo'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center pb-4 border-b border-gray-200">
+                <span className="text-sm text-gray-600">Monto total depositado:</span>
+                <span className="text-lg font-bold text-emerald-600">
+                  {formatMXN(paymentModal.type === 'advance' ? paymentModal.project.advance_amount : paymentModal.project.balance_amount)}
+                </span>
+              </div>
+
+              <div className="mt-4 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-gray-700">¿Incluye Factura?</p>
+                  <p className="text-[10px] text-gray-500 mt-0.5">Si activas esto, se separará el IVA (16%).</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" checked={paymentHasInvoice} onChange={(e) => setPaymentHasInvoice(e.target.checked)} className="sr-only peer" />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
+                </label>
+              </div>
+
+              {paymentHasInvoice && (
+                <div className="mt-3 bg-amber-50 rounded-lg p-3 border border-amber-100">
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-gray-600">Ingreso Base a Distribuir:</span>
+                    <span className="font-semibold text-gray-900">
+                      {formatMXN(Math.round(((paymentModal.type === 'advance' ? paymentModal.project.advance_amount : paymentModal.project.balance_amount) / 1.16) * 100) / 100)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-600">IVA para el SAT (16%):</span>
+                    <span className="font-semibold text-amber-700">
+                      {formatMXN(Math.round(((paymentModal.type === 'advance' ? paymentModal.project.advance_amount : paymentModal.project.balance_amount) - (Math.round(((paymentModal.type === 'advance' ? paymentModal.project.advance_amount : paymentModal.project.balance_amount) / 1.16) * 100) / 100)) * 100) / 100)}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button 
+                onClick={() => setPaymentModal({ open: false, project: null, type: 'advance' })} 
+                disabled={paymentLoading}
+                className="px-4 py-2.5 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={confirmPayment} 
+                disabled={paymentLoading}
+                className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 shadow-sm transition-colors"
+              >
+                {paymentLoading ? 'Procesando...' : 'Confirmar Cobro'}
+              </button>
             </div>
           </div>
         </div>

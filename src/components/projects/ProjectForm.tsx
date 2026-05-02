@@ -27,6 +27,7 @@ export default function ProjectForm({ open, onClose, onSaved, editProject }: Pro
     type: 'desarrollo_custom',
     total_amount: '',
     advance_amount: '',
+    has_invoice: false,
     start_date: new Date().toISOString().split('T')[0],
     estimated_months: '1',
     status: 'propuesta',
@@ -52,6 +53,7 @@ export default function ProjectForm({ open, onClose, onSaved, editProject }: Pro
         type: editProject.type,
         total_amount: editProject.total_amount.toString(),
         advance_amount: editProject.advance_amount ? editProject.advance_amount.toString() : (editProject.total_amount * 0.5).toString(),
+        has_invoice: editProject.has_invoice || false,
         start_date: editProject.start_date || new Date().toISOString().split('T')[0],
         estimated_months: editProject.estimated_months.toString(),
         status: editProject.status,
@@ -65,6 +67,7 @@ export default function ProjectForm({ open, onClose, onSaved, editProject }: Pro
         type: 'desarrollo_custom',
         total_amount: '',
         advance_amount: '',
+        has_invoice: false,
         start_date: new Date().toISOString().split('T')[0],
         estimated_months: '1',
         status: 'propuesta',
@@ -75,8 +78,10 @@ export default function ProjectForm({ open, onClose, onSaved, editProject }: Pro
   }, [editProject, open]);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {
-    const { name, value } = e.target;
-    if (name === 'total_amount') {
+    const { name, value, type } = e.target;
+    if (type === 'checkbox') {
+      setForm(prev => ({ ...prev, [name]: (e.target as HTMLInputElement).checked }));
+    } else if (name === 'total_amount') {
       const val = parseFloat(value) || 0;
       setForm(prev => ({ ...prev, total_amount: value, advance_amount: (val * 0.5).toString() }));
     } else {
@@ -111,6 +116,7 @@ export default function ProjectForm({ open, onClose, onSaved, editProject }: Pro
       start_date: form.start_date,
       estimated_months: parseInt(form.estimated_months),
       status: form.status,
+      has_invoice: form.has_invoice,
       advance_amount: advanceAmount,
       advance_date: form.start_date,
       advance_paid: false,
@@ -206,6 +212,18 @@ export default function ProjectForm({ open, onClose, onSaved, editProject }: Pro
               ))}
             </select>
           </div>
+        </div>
+
+        {/* Invoice Toggle */}
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-gray-700">¿Requiere Factura?</p>
+            <p className="text-[10px] text-gray-500">Si activas esto, el IVA se separará automáticamente al registrar cobros.</p>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" name="has_invoice" checked={form.has_invoice} onChange={handleChange} className="sr-only peer" />
+            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
+          </label>
         </div>
 
         {/* Row 2 */}

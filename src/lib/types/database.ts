@@ -64,6 +64,7 @@ export type Project = {
   balance_paid: boolean;
   assigned_partner: 'socio_1' | 'socio_2' | 'ambos';
   assigned_partner_id: string | null;
+  has_invoice: boolean;
   notes: string | null;
   created_at: string;
   updated_at: string;
