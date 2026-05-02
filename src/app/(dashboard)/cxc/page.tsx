@@ -58,7 +58,7 @@ export default function CxCPage() {
     const ivaAmount = paymentHasInvoice ? Math.round((amount - baseAmount) * 100) / 100 : 0;
 
     // Create income
-    const { data: newIncome } = await supabase.from('income').insert({
+    const { data: newIncome, error: insertError } = await supabase.from('income').insert({
       user_id: user.id,
       date: new Date().toISOString().split('T')[0],
       amount: baseAmount,
@@ -69,11 +69,17 @@ export default function CxCPage() {
       has_invoice: paymentHasInvoice,
       concept: `Cobro CxC - ${(receivable as any).project?.name || 'Proyecto'}`,
       category: 'saldo_proyecto',
-      client_id: receivable.client_id,
-      project_id: receivable.project_id,
+      client_id: receivable.client_id || null,
+      project_id: receivable.project_id || null,
       payment_method: 'transferencia',
       status: 'cobrado',
     }).select().single();
+
+    if (insertError) {
+      toast(`Error guardando ingreso: ${insertError.message}`, 'error');
+      setPaymentLoading(false);
+      return;
+    }
 
     if (newIncome) {
       // 1. Separate IVA if there is invoice

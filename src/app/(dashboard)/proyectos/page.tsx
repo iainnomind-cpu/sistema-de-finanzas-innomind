@@ -95,7 +95,7 @@ export default function ProyectosPage() {
     const ivaAmount = paymentHasInvoice ? Math.round((amount - baseAmount) * 100) / 100 : 0;
 
     // Create income entry
-    const { data: newIncome } = await supabase.from('income').insert({
+    const { data: newIncome, error: insertError } = await supabase.from('income').insert({
       user_id: user.id,
       date: new Date().toISOString().split('T')[0],
       amount: baseAmount,
@@ -106,11 +106,17 @@ export default function ProyectosPage() {
       has_invoice: paymentHasInvoice,
       concept: `${type === 'advance' ? 'Anticipo' : 'Saldo'} - ${project.name}`,
       category: type === 'advance' ? 'anticipo_proyecto' : 'saldo_proyecto',
-      client_id: project.client_id,
+      client_id: project.client_id || null,
       project_id: project.id,
       payment_method: 'transferencia',
       status: 'cobrado',
     }).select().single();
+
+    if (insertError) {
+      toast(`Error guardando ingreso: ${insertError.message}`, 'error');
+      setPaymentLoading(false);
+      return;
+    }
 
     if (newIncome) {
       // 1. Separate IVA if there is invoice
