@@ -72,7 +72,7 @@ export default function CxCPage() {
       client_id: receivable.client_id || null,
       project_id: receivable.project_id || null,
       payment_method: 'transferencia',
-      status: 'cobrado',
+      status: 'en_cuenta',
     }).select().single();
 
     if (insertError) {

@@ -108,7 +108,7 @@ export default function ProyectosPage() {
       client_id: project.client_id || null,
       project_id: project.id,
       payment_method: 'transferencia',
-      status: 'cobrado',
+      status: 'en_cuenta',
     };
 
     console.log('PAYLOAD:', payload);
