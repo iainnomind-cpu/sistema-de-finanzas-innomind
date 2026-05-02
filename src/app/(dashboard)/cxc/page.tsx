@@ -14,11 +14,15 @@ export default function CxCPage() {
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('todas');
 
+  const [paymentModal, setPaymentModal] = useState<{ open: boolean; receivable: Receivable | null }>({ open: false, receivable: null });
+  const [paymentHasInvoice, setPaymentHasInvoice] = useState(false);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+
   const fetchReceivables = useCallback(async () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('receivables')
-      .select('*, client:clients(id, name), project:projects(id, name)')
+      .select('*, client:clients(id, name), project:projects(id, name, has_invoice)')
       .order('due_date', { ascending: true });
 
     if (error) toast('Error cargando CxC', 'error');
@@ -39,22 +43,56 @@ export default function CxCPage() {
 
   useEffect(() => { fetchReceivables(); }, []);
 
-  async function handleCollect(receivable: Receivable) {
+  async function confirmPayment() {
+    if (!paymentModal.receivable) return;
+    setPaymentLoading(true);
+    const { receivable } = paymentModal;
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    const amount = receivable.amount - (receivable.partial_amount || 0);
+
+    // Calculate IVA
+    const ivaRate = paymentHasInvoice ? 0.16 : 0;
+    const baseAmount = paymentHasInvoice ? Math.round((amount / (1 + ivaRate)) * 100) / 100 : amount;
+    const ivaAmount = paymentHasInvoice ? Math.round((amount - baseAmount) * 100) / 100 : 0;
+
     // Create income
-    await supabase.from('income').insert({
+    const { data: newIncome } = await supabase.from('income').insert({
       user_id: user.id,
       date: new Date().toISOString().split('T')[0],
-      amount: receivable.amount,
+      amount: baseAmount,
+      base_amount: baseAmount,
+      total_amount_with_iva: amount,
+      iva_amount: ivaAmount,
+      iva_rate: ivaRate,
+      has_invoice: paymentHasInvoice,
       concept: `Cobro CxC - ${(receivable as any).project?.name || 'Proyecto'}`,
       category: 'saldo_proyecto',
       client_id: receivable.client_id,
       project_id: receivable.project_id,
       payment_method: 'transferencia',
-      status: 'en_cuenta',
-    });
+      status: 'cobrado',
+    }).select().single();
+
+    if (newIncome) {
+      // 1. Separate IVA if there is invoice
+      if (newIncome.has_invoice && newIncome.iva_amount > 0) {
+        await supabase.rpc('separate_iva', {
+          p_income_id: newIncome.id,
+          p_iva_amount: newIncome.iva_amount,
+          p_base_amount: newIncome.base_amount,
+          p_user_id: user.id
+        });
+      }
+
+      // 2. Distribute base amount
+      await supabase.rpc('distribute_income', {
+        p_income_id: newIncome.id,
+        p_amount: newIncome.base_amount,
+        p_user_id: user.id
+      });
+    }
 
     // Close CxC
     await supabase.from('receivables').update({ status: 'cobrada' }).eq('id', receivable.id);
@@ -64,7 +102,9 @@ export default function CxCPage() {
       await supabase.from('projects').update({ balance_paid: true }).eq('id', receivable.project_id);
     }
 
-    toast('CxC cobrada. Ingreso generado automáticamente.', 'success');
+    toast('CxC cobrada. Ingreso generado, IVA y distribuciones aplicadas automáticamente.', 'success');
+    setPaymentLoading(false);
+    setPaymentModal({ open: false, receivable: null });
     fetchReceivables();
   }
 
@@ -172,7 +212,7 @@ export default function CxCPage() {
                       </td>
                       <td className="px-6 py-3 text-right">
                         {(r.status === 'pendiente' || r.status === 'parcial') && (
-                          <button onClick={() => handleCollect(r)}
+                          <button onClick={() => { setPaymentModal({ open: true, receivable: r }); setPaymentHasInvoice((r as any).project?.has_invoice || false); }}
                             className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 transition-all shadow-sm">
                             <DollarSign size={12} /> Cobrar
                           </button>
@@ -186,6 +226,77 @@ export default function CxCPage() {
           </div>
         )}
       </div>
+
+      {/* Payment Confirmation Modal */}
+      {paymentModal.open && paymentModal.receivable && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => !paymentLoading && setPaymentModal({ open: false, receivable: null })} />
+          <div className="relative bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full animate-fade-in">
+            <h3 className="text-lg font-bold text-brand-900 mb-1">Confirmar Cobro</h3>
+            <p className="text-sm text-gray-500 mb-6">Estás a punto de registrar el pago de esta cuenta. El ingreso se distribuirá automáticamente.</p>
+            
+            <div className="bg-gray-50 rounded-xl p-4 mb-6 border border-gray-100">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-sm text-gray-600">Cliente / Proyecto:</span>
+                <span className="text-sm font-semibold text-gray-900 truncate max-w-[200px]">
+                  {(paymentModal.receivable as any).client?.name || '—'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center pb-4 border-b border-gray-200">
+                <span className="text-sm text-gray-600">Monto depositado:</span>
+                <span className="text-lg font-bold text-emerald-600">
+                  {formatMXN(paymentModal.receivable.amount - (paymentModal.receivable.partial_amount || 0))}
+                </span>
+              </div>
+
+              <div className="mt-4 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-gray-700">¿Incluye Factura?</p>
+                  <p className="text-[10px] text-gray-500 mt-0.5">Si activas esto, se separará el IVA (16%).</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input type="checkbox" checked={paymentHasInvoice} onChange={(e) => setPaymentHasInvoice(e.target.checked)} className="sr-only peer" />
+                  <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
+                </label>
+              </div>
+
+              {paymentHasInvoice && (
+                <div className="mt-3 bg-amber-50 rounded-lg p-3 border border-amber-100">
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-gray-600">Ingreso Base a Distribuir:</span>
+                    <span className="font-semibold text-gray-900">
+                      {formatMXN(Math.round(((paymentModal.receivable.amount - (paymentModal.receivable.partial_amount || 0)) / 1.16) * 100) / 100)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-600">IVA para el SAT (16%):</span>
+                    <span className="font-semibold text-amber-700">
+                      {formatMXN(Math.round(((paymentModal.receivable.amount - (paymentModal.receivable.partial_amount || 0)) - (Math.round(((paymentModal.receivable.amount - (paymentModal.receivable.partial_amount || 0)) / 1.16) * 100) / 100)) * 100) / 100)}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button 
+                onClick={() => setPaymentModal({ open: false, receivable: null })} 
+                disabled={paymentLoading}
+                className="px-4 py-2.5 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={confirmPayment} 
+                disabled={paymentLoading}
+                className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 shadow-sm transition-colors"
+              >
+                {paymentLoading ? 'Procesando...' : 'Confirmar Cobro'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
