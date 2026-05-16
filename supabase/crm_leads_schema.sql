@@ -1,29 +1,44 @@
 -- Execute this in the SQL Editor of your finapp Supabase project (mndkjjxtuqizpvkjnnde)
 
+-- 1. Ensure the table exists
 CREATE TABLE IF NOT EXISTS public.crm_leads (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     full_name TEXT NOT NULL,
     company_name TEXT NOT NULL,
     phone TEXT NOT NULL,
-    status TEXT DEFAULT 'nuevo' CHECK (status IN ('nuevo', 'contactado', 'en_negociacion', 'cerrado')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Enable RLS (optional depending on your finapp security setup)
+-- 2. Add the new columns if they don't exist
+ALTER TABLE public.crm_leads 
+ADD COLUMN IF NOT EXISTS industry TEXT,
+ADD COLUMN IF NOT EXISTS service_of_interest TEXT,
+ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'nuevo';
+
+-- 3. Update the CHECK constraint for the new statuses
+-- First, drop the existing constraint if we previously created it
+ALTER TABLE public.crm_leads DROP CONSTRAINT IF EXISTS crm_leads_status_check;
+
+-- Then add the new constraint with all the new statuses
+ALTER TABLE public.crm_leads ADD CONSTRAINT crm_leads_status_check 
+CHECK (status IN ('nuevo', 'contactado', 'agendado', 'cotizado', 'en_negociacion', 'ganado', 'perdido'));
+
+-- 4. Enable RLS
 ALTER TABLE public.crm_leads ENABLE ROW LEVEL SECURITY;
 
--- If you want anyone with the anon key to be able to insert leads (from the Innomind landing page):
+-- 5. Drop existing policies to avoid "already exists" errors
+DROP POLICY IF EXISTS "Allow public inserts to crm_leads" ON public.crm_leads;
+DROP POLICY IF EXISTS "Allow authenticated full access to crm_leads" ON public.crm_leads;
+DROP POLICY IF EXISTS "Allow anon read access to crm_leads" ON public.crm_leads;
+
+-- 6. Recreate the policies
 CREATE POLICY "Allow public inserts to crm_leads" ON public.crm_leads
     FOR INSERT 
     TO anon
     WITH CHECK (true);
 
--- If you want authenticated users to view/update leads in the finapp dashboard:
 CREATE POLICY "Allow authenticated full access to crm_leads" ON public.crm_leads
     FOR ALL
     TO authenticated
     USING (true)
     WITH CHECK (true);
-
--- Also allow anon read access if needed for testing (not recommended in production if anon shouldn't see all leads)
--- CREATE POLICY "Allow anon read access to crm_leads" ON public.crm_leads FOR SELECT TO anon USING (true);

@@ -4,13 +4,15 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Phone, Building, User, Mail, Calendar, Clock, ArrowRight, MoreHorizontal } from 'lucide-react';
 
-type LeadStatus = 'nuevo' | 'contactado' | 'en_negociacion' | 'cerrado';
+type LeadStatus = 'nuevo' | 'contactado' | 'agendado' | 'cotizado' | 'en_negociacion' | 'ganado' | 'perdido';
 
 interface Lead {
   id: string;
   full_name: string;
   company_name: string;
   phone: string;
+  industry: string;
+  service_of_interest: string;
   status: LeadStatus;
   created_at: string;
 }
@@ -18,8 +20,11 @@ interface Lead {
 const COLUMNS: { id: LeadStatus; label: string; color: string }[] = [
   { id: 'nuevo', label: 'Nuevo', color: 'bg-blue-100 text-blue-700 border-blue-200' },
   { id: 'contactado', label: 'Contactado', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+  { id: 'agendado', label: 'Agendado', color: 'bg-indigo-100 text-indigo-700 border-indigo-200' },
+  { id: 'cotizado', label: 'Cotizado', color: 'bg-orange-100 text-orange-700 border-orange-200' },
   { id: 'en_negociacion', label: 'En Negociación', color: 'bg-purple-100 text-purple-700 border-purple-200' },
-  { id: 'cerrado', label: 'Cerrado', color: 'bg-green-100 text-green-700 border-green-200' }
+  { id: 'ganado', label: 'Ganado', color: 'bg-green-100 text-green-700 border-green-200' },
+  { id: 'perdido', label: 'Perdido', color: 'bg-red-100 text-red-700 border-red-200' }
 ];
 
 export default function CRMPage() {
@@ -172,12 +177,15 @@ export default function CRMPage() {
                     </h4>
                     
                     <div className="space-y-1.5 mb-4">
-                      <div className="text-sm text-slate-600 flex items-center gap-2">
-                        <Building size={14} className="text-slate-400" />
-                        <span className="truncate">{lead.company_name}</span>
+                      <div className="text-xs font-semibold text-indigo-600 bg-indigo-50 inline-block px-2 py-0.5 rounded-full mb-1">
+                        {lead.service_of_interest}
                       </div>
                       <div className="text-sm text-slate-600 flex items-center gap-2">
-                        <Phone size={14} className="text-slate-400" />
+                        <Building size={14} className="text-slate-400 shrink-0" />
+                        <span className="truncate">{lead.company_name} <span className="text-xs text-slate-400">({lead.industry})</span></span>
+                      </div>
+                      <div className="text-sm text-slate-600 flex items-center gap-2">
+                        <Phone size={14} className="text-slate-400 shrink-0" />
                         <span>{lead.phone}</span>
                       </div>
                     </div>
