@@ -20,6 +20,7 @@ import {
   ChevronRight,
   PieChart,
   Landmark,
+  UserPlus,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -29,6 +30,7 @@ const menuGroups = [
     items: [
       { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
       { href: '/proyectos', icon: FolderKanban, label: 'Proyectos' },
+      { href: '/crm', icon: UserPlus, label: 'CRM Leads' },
       { href: '/clientes', icon: Users, label: 'Clientes' },
       { href: '/socios', icon: UserCog, label: 'Socios y Nómina' },
     ],

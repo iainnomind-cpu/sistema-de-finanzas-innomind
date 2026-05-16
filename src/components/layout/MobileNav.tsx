@@ -17,11 +17,13 @@ import {
   FileBarChart,
   Target,
   UserCog,
+  UserPlus,
 } from 'lucide-react';
 
 const allItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { href: '/proyectos', icon: FolderKanban, label: 'Proyectos' },
+  { href: '/crm', icon: UserPlus, label: 'CRM Leads' },
   { href: '/clientes', icon: Users, label: 'Clientes' },
   { href: '/socios', icon: UserCog, label: 'Socios' },
   { href: '/ingresos', icon: DollarSign, label: 'Ingresos' },
