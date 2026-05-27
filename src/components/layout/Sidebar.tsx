@@ -21,6 +21,7 @@ import {
   PieChart,
   Landmark,
   UserPlus,
+  LifeBuoy,
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -32,6 +33,7 @@ const menuGroups = [
       { href: '/proyectos', icon: FolderKanban, label: 'Proyectos' },
       { href: '/crm', icon: UserPlus, label: 'CRM Leads' },
       { href: '/clientes', icon: Users, label: 'Clientes' },
+      { href: '/soporte', icon: LifeBuoy, label: 'Soporte' },
       { href: '/socios', icon: UserCog, label: 'Socios y Nómina' },
     ],
   },

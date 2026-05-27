@@ -18,6 +18,7 @@ import {
   Target,
   UserCog,
   UserPlus,
+  LifeBuoy,
 } from 'lucide-react';
 
 const allItems = [
@@ -25,6 +26,7 @@ const allItems = [
   { href: '/proyectos', icon: FolderKanban, label: 'Proyectos' },
   { href: '/crm', icon: UserPlus, label: 'CRM Leads' },
   { href: '/clientes', icon: Users, label: 'Clientes' },
+  { href: '/soporte', icon: LifeBuoy, label: 'Soporte' },
   { href: '/socios', icon: UserCog, label: 'Socios' },
   { href: '/ingresos', icon: DollarSign, label: 'Ingresos' },
   { href: '/gastos', icon: Receipt, label: 'Gastos' },
