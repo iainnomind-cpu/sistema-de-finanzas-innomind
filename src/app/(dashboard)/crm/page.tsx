@@ -30,6 +30,7 @@ const COLUMNS: { id: LeadStatus; label: string; color: string }[] = [
 export default function CRMPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'pruebas' | 'cotizaciones'>('pruebas');
   const supabase = createClient();
 
   useEffect(() => {
@@ -120,19 +121,51 @@ export default function CRMPage() {
     );
   }
 
+  const displayLeads = leads.filter(lead => {
+    if (activeTab === 'pruebas') {
+      return lead.service_of_interest === 'Trak (Proyectos)' || lead.service_of_interest === 'Corē (ERP/CRM)';
+    } else {
+      return lead.service_of_interest !== 'Trak (Proyectos)' && lead.service_of_interest !== 'Corē (ERP/CRM)';
+    }
+  });
+
   return (
     <div className="flex flex-col h-full bg-slate-50 min-h-screen">
       <div className="px-8 py-6 bg-white border-b border-slate-200">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Solicitudes y Cotizaciones</h1>
             <p className="text-sm text-slate-500 mt-1">Gestiona las solicitudes de demos, cotizaciones y pruebas entrantes desde la página web (Innomind).</p>
           </div>
           <div className="flex items-center gap-2">
             <span className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-semibold">
-              {leads.length} Leads Totales
+              {displayLeads.length} Registros en esta vista
             </span>
           </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="mt-6 flex border-b border-slate-200">
+          <button
+            onClick={() => setActiveTab('pruebas')}
+            className={`px-4 py-2 font-medium text-sm transition-all border-b-2 ${
+              activeTab === 'pruebas'
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+            }`}
+          >
+            Pruebas Gratuitas (Corē / Trak)
+          </button>
+          <button
+            onClick={() => setActiveTab('cotizaciones')}
+            className={`px-4 py-2 font-medium text-sm transition-all border-b-2 ${
+              activeTab === 'cotizaciones'
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+            }`}
+          >
+            Cotizaciones y Demos
+          </button>
         </div>
       </div>
 
@@ -149,13 +182,13 @@ export default function CRMPage() {
                 <div className="flex items-center gap-2">
                   <h3 className="font-semibold text-slate-700">{column.label}</h3>
                   <span className="px-2 py-0.5 rounded-full bg-white text-slate-500 text-xs font-bold shadow-sm">
-                    {leads.filter(l => l.status === column.id).length}
+                    {displayLeads.filter(l => l.status === column.id).length}
                   </span>
                 </div>
               </div>
               
               <div className="flex-1 overflow-y-auto p-3 space-y-3">
-                {leads.filter(l => l.status === column.id).map(lead => (
+                {displayLeads.filter(l => l.status === column.id).map(lead => (
                   <div
                     key={lead.id}
                     draggable
@@ -212,7 +245,7 @@ export default function CRMPage() {
                   </div>
                 ))}
                 
-                {leads.filter(l => l.status === column.id).length === 0 && (
+                {displayLeads.filter(l => l.status === column.id).length === 0 && (
                   <div className="h-24 flex items-center justify-center border-2 border-dashed border-slate-300 rounded-lg text-sm text-slate-400">
                     Arrastra aquí
                   </div>
