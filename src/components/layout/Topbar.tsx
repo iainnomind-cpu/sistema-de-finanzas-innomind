@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Bell, LogOut, Search, User, Menu, X } from 'lucide-react';
@@ -15,6 +15,23 @@ export default function Topbar({ onMobileMenuToggle, mobileMenuOpen }: TopbarPro
   const [showSearch, setShowSearch] = useState(false);
   const router = useRouter();
   const supabase = createClient();
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [recentLeads, setRecentLeads] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      const { data } = await supabase
+        .from('crm_leads')
+        .select('*')
+        .eq('status', 'nuevo')
+        .order('created_at', { ascending: false })
+        .limit(5);
+      if (data) setRecentLeads(data);
+    };
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 10000);
+    return () => clearInterval(interval);
+  }, [supabase]);
 
   async function handleLogout() {
     await supabase.auth.signOut();
@@ -51,11 +68,55 @@ export default function Topbar({ onMobileMenuToggle, mobileMenuOpen }: TopbarPro
       {/* Right side */}
       <div className="flex items-center gap-2">
         {/* Notifications */}
-        <button className="relative p-2.5 rounded-xl text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-all group">
-          <Bell size={19} />
-          {/* Notification dot */}
-          <span className="absolute top-2 right-2 w-2 h-2 bg-danger-500 rounded-full animate-pulse-soft" />
-        </button>
+        <div className="relative">
+          <button 
+            onClick={() => {
+              setShowNotifications(!showNotifications);
+              if (showUserMenu) setShowUserMenu(false);
+            }}
+            className="relative p-2.5 rounded-xl text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-all group"
+          >
+            <Bell size={19} />
+            {recentLeads.length > 0 && (
+              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+            )}
+          </button>
+          
+          {showNotifications && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowNotifications(false)} />
+              <div className="absolute right-0 top-full mt-2 w-80 bg-white rounded-xl shadow-xl border border-gray-200/60 py-2 z-50 animate-fade-in">
+                <div className="px-4 py-2 border-b border-gray-100">
+                  <p className="text-sm font-medium text-gray-900">Nuevas Solicitudes</p>
+                </div>
+                <div className="max-h-64 overflow-y-auto">
+                  {recentLeads.length === 0 ? (
+                    <p className="p-4 text-sm text-gray-500 text-center">No hay notificaciones nuevas</p>
+                  ) : (
+                    recentLeads.map(lead => (
+                      <div 
+                        key={lead.id} 
+                        className="px-4 py-3 border-b border-gray-50 hover:bg-gray-50 cursor-pointer"
+                        onClick={() => {
+                          setShowNotifications(false);
+                          router.push('/crm');
+                        }}
+                      >
+                        <p className="text-sm font-medium text-gray-900">{lead.full_name}</p>
+                        <p className="text-xs text-gray-500 truncate">{lead.service_of_interest} - {lead.company_name}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="px-4 py-2 border-t border-gray-100">
+                  <button onClick={() => { setShowNotifications(false); router.push('/crm'); }} className="text-xs font-medium text-blue-600 hover:text-blue-700 w-full text-center">
+                    Ir al CRM
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
 
         {/* User menu */}
         <div className="relative">

@@ -9,26 +9,28 @@ export default function GlobalLeadListener() {
   const supabase = createClient();
 
   useEffect(() => {
-    console.log("GlobalLeadListener mounted, setting up subscription...");
-    
-    const channel = supabase
-      .channel('global-leads-changes')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'crm_leads' }, (payload) => {
-        console.log("GlobalLeadListener caught new lead:", payload);
-        const newLead = payload.new;
-        const isTrial = newLead.service_of_interest === 'Trak (Proyectos)' || newLead.service_of_interest === 'Corē (ERP/CRM)';
-        const title = isTrial ? '¡Nueva Prueba Gratuita!' : '¡Nueva Solicitud de Demo/Cotización!';
-        
-        toast(`${title} de ${newLead.full_name} (${newLead.company_name})`, 'success');
-      })
-      .subscribe((status) => {
-        console.log("GlobalLeadListener subscription status:", status);
-      });
+    let lastChecked = new Date().toISOString();
 
-    return () => {
-      console.log("GlobalLeadListener unmounting, removing subscription...");
-      supabase.removeChannel(channel);
+    const checkNewLeads = async () => {
+      const { data } = await supabase
+        .from('crm_leads')
+        .select('*')
+        .gt('created_at', lastChecked)
+        .order('created_at', { ascending: true });
+
+      if (data && data.length > 0) {
+        data.forEach(newLead => {
+          const isTrial = newLead.service_of_interest === 'Trak (Proyectos)' || newLead.service_of_interest === 'Corē (ERP/CRM)';
+          const title = isTrial ? '¡Nueva Prueba Gratuita!' : '¡Nueva Solicitud de Demo/Cotización!';
+          toast(`${title} de ${newLead.full_name} (${newLead.company_name})`, 'success');
+        });
+        lastChecked = data[data.length - 1].created_at;
+      }
     };
+
+    const interval = setInterval(checkNewLeads, 10000); // Check every 10 seconds
+
+    return () => clearInterval(interval);
   }, [toast]);
 
   return null;

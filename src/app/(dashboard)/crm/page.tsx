@@ -36,22 +36,28 @@ export default function CRMPage() {
   useEffect(() => {
     fetchLeads();
     
-    // Subscribe to changes
+    // Poll every 10 seconds as a fallback to ensure data is always fresh
+    const interval = setInterval(() => {
+      fetchLeads(false); // pass false to avoid loading spinner on background refresh
+    }, 10000);
+
+    // Subscribe to changes (if Realtime is enabled in Supabase)
     const channel = supabase
       .channel('schema-db-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'crm_leads' }, (payload) => {
-        fetchLeads();
+        fetchLeads(false);
       })
       .subscribe();
 
     return () => {
+      clearInterval(interval);
       supabase.removeChannel(channel);
     };
   }, []);
 
-  const fetchLeads = async () => {
+  const fetchLeads = async (showLoader = true) => {
     try {
-      setLoading(true);
+      if (showLoader) setLoading(true);
       const { data, error } = await supabase
         .from('crm_leads')
         .select('*')
