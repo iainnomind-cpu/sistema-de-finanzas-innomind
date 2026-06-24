@@ -31,7 +31,7 @@ const menuGroups = [
     items: [
       { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
       { href: '/proyectos', icon: FolderKanban, label: 'Proyectos' },
-      { href: '/crm', icon: UserPlus, label: 'CRM Leads' },
+      { href: '/crm', icon: UserPlus, label: 'Solicitudes' },
       { href: '/clientes', icon: Users, label: 'Clientes' },
       { href: '/soporte', icon: LifeBuoy, label: 'Soporte' },
       { href: '/socios', icon: UserCog, label: 'Socios y Nómina' },

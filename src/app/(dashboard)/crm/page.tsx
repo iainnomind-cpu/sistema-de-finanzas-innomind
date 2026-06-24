@@ -125,8 +125,8 @@ export default function CRMPage() {
       <div className="px-8 py-6 bg-white border-b border-slate-200">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">CRM de Prospectos</h1>
-            <p className="text-sm text-slate-500 mt-1">Gestiona los leads entrantes desde la página web (Innomind).</p>
+            <h1 className="text-2xl font-bold text-slate-900">Solicitudes y Cotizaciones</h1>
+            <p className="text-sm text-slate-500 mt-1">Gestiona las solicitudes de demos, cotizaciones y pruebas entrantes desde la página web (Innomind).</p>
           </div>
           <div className="flex items-center gap-2">
             <span className="px-3 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-semibold">
