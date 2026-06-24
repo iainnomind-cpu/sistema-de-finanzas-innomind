@@ -26,11 +26,22 @@ export async function POST(req: NextRequest) {
       apiVersion: '2026-05-27.dahlia',
     });
 
-    const { priceId, email, name, company, plan } = await req.json();
+    const body = await req.json();
+    const { planKey, email, name, company, plan } = body;
+
+    let priceId = body.priceId;
+
+    if (planKey) {
+      if (planKey === 'core' || planKey === 'crm-erp') {
+        priceId = process.env.STRIPE_PRICE_CORE_MONTHLY;
+      } else if (planKey === 'trak' || planKey === 'project-tracker') {
+        priceId = process.env.STRIPE_PRICE_TRAK_MONTHLY;
+      }
+    }
 
     if (!priceId || !email) {
       return NextResponse.json(
-        { error: 'Missing required fields: priceId and email are required' },
+        { error: 'Missing required fields: planKey/priceId and email are required' },
         { status: 400, headers: CORS_HEADERS }
       );
     }
