@@ -15,7 +15,21 @@ interface Lead {
   service_of_interest: string;
   status: LeadStatus;
   created_at: string;
+  email?: string;
+  stripe_customer_id?: string;
+  stripe_subscription_id?: string;
+  subscription_status?: string;
+  plan?: string;
 }
+
+const SUBSCRIPTION_BADGE: Record<string, { label: string; color: string }> = {
+  trialing:     { label: '🟡 En Prueba',    color: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+  trial_ending: { label: '🟠 Prueba Termina', color: 'bg-orange-100 text-orange-700 border-orange-200' },
+  active:       { label: '🟢 Activo',        color: 'bg-green-100 text-green-700 border-green-200' },
+  past_due:     { label: '🔴 Pago Fallido',  color: 'bg-red-100 text-red-700 border-red-200' },
+  canceled:     { label: '⚫ Cancelado',      color: 'bg-slate-100 text-slate-500 border-slate-200' },
+  none:         { label: '⬜ Sin Pago',       color: 'bg-slate-50 text-slate-400 border-slate-100' },
+};
 
 const COLUMNS: { id: LeadStatus; label: string; color: string }[] = [
   { id: 'nuevo', label: 'Nuevo', color: 'bg-blue-100 text-blue-700 border-blue-200' },
@@ -202,8 +216,18 @@ export default function CRMPage() {
                     className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 cursor-grab hover:shadow-md hover:border-indigo-300 transition-all group"
                   >
                     <div className="flex justify-between items-start mb-3">
-                      <div className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${column.color}`}>
-                        {column.label}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <div className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${column.color}`}>
+                          {column.label}
+                        </div>
+                        {lead.subscription_status && lead.subscription_status !== 'none' && (() => {
+                          const badge = SUBSCRIPTION_BADGE[lead.subscription_status];
+                          return badge ? (
+                            <div className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${badge.color}`}>
+                              {badge.label}
+                            </div>
+                          ) : null;
+                        })()}
                       </div>
                       <button className="text-slate-400 hover:text-slate-600">
                         <MoreHorizontal size={16} />
