@@ -5,6 +5,7 @@ import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import MobileNav from '@/components/layout/MobileNav';
 import { ToastProvider } from '@/components/ui/Toast';
+import GlobalLeadListener from '@/components/GlobalLeadListener';
 
 export default function DashboardLayout({
   children,
@@ -15,6 +16,7 @@ export default function DashboardLayout({
 
   return (
     <ToastProvider>
+      <GlobalLeadListener />
       <div className="min-h-screen bg-background flex">
         {/* Desktop Sidebar */}
         <div className="hidden lg:block">
