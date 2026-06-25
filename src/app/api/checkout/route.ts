@@ -54,12 +54,34 @@ export async function POST(req: NextRequest) {
       customer = await stripe.customers.create({
         email,
         name,
-        metadata: { company, plan },
+        metadata: { company, plan: planKey },
       });
     }
 
+    // ✅ Anti-duplicate: check for existing active or trialing subscriptions
+    const existingSubs = await stripe.subscriptions.list({
+      customer: customer.id,
+      status: 'all',
+      limit: 10,
+    });
+
+    const activeSub = existingSubs.data.find(
+      (sub) => sub.status === 'active' || sub.status === 'trialing'
+    );
+
+    if (activeSub) {
+      // User already has an active/trial subscription — send to billing portal instead
+      const innomindUrl = process.env.NEXT_PUBLIC_INNOMIND_URL || 'https://innomind-erp.vercel.app';
+      const portalSession = await stripe.billingPortal.sessions.create({
+        customer: customer.id,
+        return_url: innomindUrl,
+      });
+      return NextResponse.json({ url: portalSession.url }, { headers: CORS_HEADERS });
+    }
+
     // Success URL — redirect back to Innomind after payment
-    const innomindUrl = process.env.NEXT_PUBLIC_INNOMIND_URL || 'https://innomind.vercel.app';
+    const innomindUrl = process.env.NEXT_PUBLIC_INNOMIND_URL || 'https://innomind-erp.vercel.app';
+    const resolvedPlan = planKey || plan || 'core';
 
     // Create Checkout Session with 15-day free trial, no card required upfront
     const session = await stripe.checkout.sessions.create({
@@ -75,11 +97,11 @@ export async function POST(req: NextRequest) {
             missing_payment_method: 'pause', // Pause (not cancel) if no card at trial end
           },
         },
-        metadata: { plan, company, email },
+        metadata: { plan: resolvedPlan, company, email },
       },
-      success_url: `${innomindUrl}?pago=exitoso&plan=${plan}`,
-      cancel_url: `${innomindUrl}?pago=cancelado`,
-      metadata: { plan, company, email },
+      success_url: `${innomindUrl}?pago=exitoso&plan=${resolvedPlan}`,
+      cancel_url: `${innomindUrl}/precios`,
+      metadata: { plan: resolvedPlan, company, email },
       locale: 'es-419',
       allow_promotion_codes: true,
     });
