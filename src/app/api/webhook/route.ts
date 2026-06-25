@@ -7,7 +7,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 });
 
 async function updateCompanyProfileByEmail(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   email: string,
   data: Record<string, unknown>
 ) {
@@ -16,7 +16,7 @@ async function updateCompanyProfileByEmail(
     .from('users')
     .select('workspace_id')
     .eq('email', email)
-    .single();
+    .single() as any;
 
   if (userError || !userData?.workspace_id) {
     console.warn(`No user/workspace found for email: ${email}`);
